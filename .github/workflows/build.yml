@@ -1,0 +1,167 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types:
+      - created
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Linux
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install clang + tools
+        run: |
+          sudo apt-get update -qy
+          sudo apt-get install -y clang-14 clang++-14 zip git
+          pip3 install git+https://github.com/alliedmodders/ambuild
+
+      - name: Clone SDKs
+        run: |
+          mkdir -p external
+          git clone --depth=1 --branch master \
+            https://github.com/alliedmodders/metamod-source.git external/metamod-source
+          git clone --depth=1 --branch cs2 \
+            https://github.com/alliedmodders/hl2sdk.git external/hl2sdk-cs2
+
+      - name: Configure & Build
+        run: |
+          cp -r cs2-menus/hl2sdk-manifests hl2sdk-manifests
+          export CC=clang-14 CXX=clang++-14
+          mkdir build && cd build
+          python3 ../configure.py \
+            -s cs2 \
+            --targets x86_64 \
+            --enable-optimize \
+            --hl2sdk-root="$GITHUB_WORKSPACE/external" \
+            --mms_path="$GITHUB_WORKSPACE/external/metamod-source" \
+            --hl2sdk-manifests="$GITHUB_WORKSPACE/hl2sdk-manifests"
+          ambuild
+
+      - name: Package
+        run: |
+          SO=$(find build -name "mapvote.so" | head -1)
+          mkdir -p package/addons/mapvote/configs
+          cp "$SO" package/addons/mapvote/mapvote.so
+          cp configs/maps.cfg package/addons/mapvote/configs/
+          cd package && zip -r ../mapvote-linux.zip . && cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvote-linux
+          path: |
+            mapvote-linux.zip
+            build/package/addons/metamod/mapvote.so
+
+  build-windows:
+    name: Build Windows
+    permissions:
+      contents: write
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install AMBuild + SDKs
+        run: |
+          pip3 install git+https://github.com/alliedmodders/ambuild
+          mkdir -p external
+          git clone --depth=1 --branch master \
+            https://github.com/alliedmodders/metamod-source.git external/metamod-source
+          git clone --depth=1 --branch cs2 \
+            https://github.com/alliedmodders/hl2sdk.git external/hl2sdk-cs2
+
+      - name: Configure & Build
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          cp -r cs2-menus/hl2sdk-manifests hl2sdk-manifests
+          mkdir build && cd build
+          python3 ../configure.py \
+            -s cs2 \
+            --targets x86_64 \
+            --enable-optimize \
+            --hl2sdk-root="$GITHUB_WORKSPACE/external" \
+            --mms_path="$GITHUB_WORKSPACE/external/metamod-source" \
+            --hl2sdk-manifests="$GITHUB_WORKSPACE/hl2sdk-manifests"
+          ambuild
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mapvote-windows
+          path: build/package/addons/metamod/mapvote.dll
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Pack
+        run: |
+          mkdir -p full/addons/mapvote/configs
+          find artifacts/mapvote-linux -name "mapvote.so" -exec cp {} full/addons/mapvote/ \;
+          find artifacts/mapvote-windows -name "mapvote.dll" -exec cp {} full/addons/mapvote/ \;
+          cp configs/maps.cfg full/addons/mapvote/configs/
+          cd full && zip -r "$GITHUB_WORKSPACE/mapvote-${{ github.ref_name }}.zip" . && cd ..
+          find artifacts/mapvote-linux -name "mapvote.so" -exec cp {} mapvote_linux.so \;
+          find artifacts/mapvote-windows -name "mapvote.dll" -exec cp {} mapvote_windows.dll \;
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "MapVote ${{ github.ref_name }}"
+          body: |
+            ## MapVote CS2 ${{ github.ref_name }}
+
+            Metamod:Source плагин голосования за следующую карту.
+
+            ### Установка
+            1. Скачай `mapvote-${{ github.ref_name }}.zip`
+            2. Распакуй в `game/csgo/`
+            3. Убедись что [cs2-menus](https://github.com/Pisex/cs2-menus) загружен
+            4. Настрой `addons/mapvote/configs/maps.cfg`
+
+            ### Зависимости
+            - [cs2-menus by Pisex](https://github.com/Pisex/cs2-menus)
+          files: |
+            mapvote-${{ github.ref_name }}.zip
+            mapvote_linux.so
+            mapvote_windows.dll
