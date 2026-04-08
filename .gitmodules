@@ -1,0 +1,4 @@
+[submodule "cs2-menus"]
+	path = cs2-menus
+	url = https://github.com/Pisex/cs2-menus.git
+	branch = master
