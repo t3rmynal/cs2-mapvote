@@ -6,8 +6,6 @@
 #include <ISmmPlugin.h>
 #include <igameevents.h>
 #include <iserver.h>
-#include <entity2/entitysystem.h>
-
 // pisex utils api (IUtilsApi, IMenusApi, IPlayersApi, Menu struct)
 #include "include/menus.h"
 
