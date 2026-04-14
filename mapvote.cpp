@@ -90,7 +90,7 @@ bool MapVote::Load(PluginId id, ISmmAPI* ismm, char* error, size_t maxlen, bool 
 
 bool MapVote::Unload(char* error, size_t maxlen)
 {
-    // снять все хуки нашего плагина
+    
     if (g_pUtils)
         g_pUtils->ClearAllHooks(g_PLID);
 
@@ -116,7 +116,7 @@ void MapVote::AllPluginsLoaded()
         return;
     }
 
-    // cs_win_panel_match — основной триггер, матч точно закончился
+    // cs_win_panel_match 
     g_pUtils->HookEvent(g_PLID, "cs_win_panel_match",
         [this](const char*, IGameEvent*, bool)
         {
@@ -130,20 +130,19 @@ void MapVote::AllPluginsLoaded()
             });
         });
 
-    // round_start — считаем раунды
+    // round_start
     g_pUtils->HookEvent(g_PLID, "round_start",
         [this](const char*, IGameEvent*, bool)
         {
             m_nCurrentRound++;
         });
 
-    // round_end — запасной триггер, если win_panel не пришёл
+    // round_end
     g_pUtils->HookEvent(g_PLID, "round_end",
         [this](const char*, IGameEvent* pEvent, bool)
         {
             if (g_VoteStarted) return;
 
-            // reason 16 = game_over в cs2
             int reason = pEvent ? pEvent->GetInt("reason") : 0;
             if (reason != 16) return;
 
@@ -168,7 +167,7 @@ void MapVote::LoadConfig()
     if (!file.is_open())
     {
         META_CONPRINTF("[MapVote] не найден конфиг: %s\n", path.c_str());
-        // карты по умолчанию
+        // карты 
         g_MapList = {{"de_mirage","Mirage"},{"de_inferno","Inferno"},{"de_dust2","Dust 2"}};
         for (const auto& e : g_MapList) g_Votes[e.mapName] = 0;
         return;
@@ -195,7 +194,7 @@ void MapVote::LoadConfig()
         if (line == "}")  { inBlock = false; continue; }
         if (!inBlock)     continue;
 
-        // парсим "ключ" "значение"
+        // парс
         std::vector<std::string> tokens;
         size_t i = 0;
         while (i < line.size())
@@ -241,7 +240,7 @@ void MapVote::StartVote()
     g_pUtils->PrintToChatAll(" \x04[MapVote]\x01 Голосование за следующую карту! \x06%d секунд\x01.",
         30);
 
-    // показываем меню каждому живому игроку
+    // меню
     for (int i = 0; i < 64; i++)
     {
         if (!g_pPlayers->IsConnected(i)) continue;
@@ -249,7 +248,7 @@ void MapVote::StartVote()
         ShowVoteMenu(i);
     }
 
-    // таймер на 30 сек — конец голосования
+    // таймер
     g_pUtils->CreateTimer(30.0f, [this]() -> float
     {
         if (g_VoteActive) EndVote();
@@ -269,7 +268,7 @@ void MapVote::ShowVoteMenu(int iSlot)
         g_pMenus->AddItemMenu(hMenu, entry.mapName.c_str(), label.c_str());
     }
 
-    // кнопка пропустить
+    // скип
     g_pMenus->AddItemMenu(hMenu, "skip", "Не участвовать");
     g_pMenus->SetExitMenu(hMenu, false);
 
@@ -281,9 +280,7 @@ void MapVote::ShowVoteMenu(int iSlot)
             if (!g_VoteActive) return;
 
             std::string mapName = szBack;
-            if (!g_Votes.count(mapName)) return; // неизвестная карта
-
-            // снять старый голос
+            if (!g_Votes.count(mapName)) return;
             if (g_PlayerVoted.count(iSlot))
             {
                 const std::string& old = g_PlayerVoted[iSlot];
@@ -294,7 +291,6 @@ void MapVote::ShowVoteMenu(int iSlot)
             g_PlayerVoted[iSlot] = mapName;
             g_Votes[mapName]++;
 
-            // ищем displayName для сообщения
             std::string disp = GetDisplayName(mapName);
             g_pUtils->PrintToChat(iSlot,
                 " \x04[MapVote]\x01 Вы проголосовали за \x06%s\x01!", disp.c_str());
@@ -306,7 +302,6 @@ void MapVote::ShowVoteMenu(int iSlot)
     g_pMenus->DisplayPlayerMenu(hMenu, iSlot);
 }
 
-// конец голосования
 void MapVote::EndVote()
 {
     g_VoteActive = false;
@@ -319,7 +314,6 @@ void MapVote::EndVote()
     META_CONPRINTF("[MapVote] победитель: %s (%d/%d голосов)\n",
         winner.c_str(), winVotes, total);
 
-    // показываем результат в чате и центре экрана
     g_pUtils->PrintToChatAll(
         " \x04[MapVote]\x01 Следующая карта: \x06%s\x01 (%d/%d голосов)",
         winnerDisp.c_str(), winVotes, total);
@@ -330,7 +324,6 @@ void MapVote::EndVote()
 
     ResetVote();
 
-    // через 3 сек меняем карту
     g_pUtils->CreateTimer(3.0f, [winner]() -> float
     {
         std::string cmd = "changelevel " + winner;
@@ -345,7 +338,6 @@ std::string MapVote::GetWinnerMap()
 {
     if (g_MapList.empty()) return "de_dust2";
 
-    // если никто не голосовал - cлучайная
     if (GetTotalVotes() == 0)
         return g_MapList[rand() % g_MapList.size()].mapName;
 
@@ -353,7 +345,6 @@ std::string MapVote::GetWinnerMap()
     for (const auto& [map, votes] : g_Votes)
         if (votes > maxVotes) maxVotes = votes;
 
-    // собираем лидеров (ничья -> рандом)
     std::vector<std::string> leaders;
     for (const auto& [map, votes] : g_Votes)
         if (votes == maxVotes) leaders.push_back(map);
