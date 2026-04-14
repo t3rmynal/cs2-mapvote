@@ -2,15 +2,11 @@
 // by t3rmynal
 // https://github.com/t3rmynal/cs2-mapvote
 
-// порядок важен: SDK-типы до include/menus.h
 #include <ISmmPlugin.h>
 #include <igameevents.h>
 #include <iserver.h>
-// pisex utils api (IUtilsApi, IMenusApi, IPlayersApi, Menu struct)
 #include "include/menus.h"
-
 #include "mapvote.h"
-
 #include <string>
 #include <vector>
 #include <map>
